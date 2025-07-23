@@ -899,6 +899,7 @@ class LatentDiffusion(DDPM):
             key = 'c_concat' if self.model.conditioning_key == 'concat' else 'c_crossattn'
             cond = {key: cond}
 
+
         if hasattr(self, "split_input_params"):
             print("Using split input params for LatentDiffusion")
             import sys
@@ -987,6 +988,9 @@ class LatentDiffusion(DDPM):
             x_recon = fold(o) / normalization
 
         else:
+            print("FFHQ256 model no attr: split_input_params.")
+            
+
             x_recon = self.model(x_noisy, t, **cond)
 
         if isinstance(x_recon, tuple) and not return_ids:

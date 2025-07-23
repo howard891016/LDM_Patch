@@ -2,3 +2,8 @@ __pycache__/
 *.zip
 *.egg-info
 src/
+*.ckpt
+models/ldm/inpainting_big/archive/
+*log
+*.pt
+
