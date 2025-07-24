@@ -467,14 +467,19 @@ if __name__ == "__main__":
     parser = get_parser()
     parser = Trainer.add_argparse_args(parser)
 
-    opt, unknown = parser.parse_known_args()
+    # (Howard add) For training Patch-LDM: Use ffhq-ldm-vq-4.yaml as base config
+    # (Howard add) train LDM command: CUDA_VISIBLE_DEVICES=<GPU_ID> python main.py --base configs/latent-diffusion/<config_spec>.yaml -t --gpus 0
+
+    opt, unknown = parser.parse_known_args() 
     if opt.name and opt.resume:
         raise ValueError(
             "-n/--name and -r/--resume cannot be specified both."
             "If you want to resume training in a new log folder, "
             "use -n/--name in combination with --resume_from_checkpoint"
         )
-    if opt.resume:
+    
+    # (Howard add) No need to resume while training Patch-LDM
+    if opt.resume: 
         if not os.path.exists(opt.resume):
             raise ValueError("Cannot find {}".format(opt.resume))
         if os.path.isfile(opt.resume):
@@ -494,6 +499,7 @@ if __name__ == "__main__":
         _tmp = logdir.split("/")
         nowname = _tmp[-1]
     else:
+        # (Howard add) For training Patch-LDM: No opt.name, only opt.base
         if opt.name:
             name = "_" + opt.name
         elif opt.base:
