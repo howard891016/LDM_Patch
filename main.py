@@ -519,14 +519,40 @@ if __name__ == "__main__":
         # init and save configs
         configs = [OmegaConf.load(cfg) for cfg in opt.base]
         cli = OmegaConf.from_dotlist(unknown)
+        # print("Original configs: " + str(configs))
+        # (Howard add) For ffhq256-ldm-vq-4.yaml: unknown: [], CLI: {}
         config = OmegaConf.merge(*configs, cli)
+        # print("Merged config:" + str(config))
+        
+        # (Howard add) For ffhq256-ldm-vq-4.yaml: configs == [config]
+        
+        # exit(0)
+
+        # (Howard add) For training Patch-LDM: 
+        #   config.lightning: 
+        #       'callbacks': {
+        #           'image_logger': { 
+        #               'target': 'main.ImageLogger', 
+        #               'params': {
+        #                   'batch_frequency': 5000, 
+        #                   'max_images': 8, 
+        #                   'increase_log_steps': False}}}
+        #       'trainer': {'benchmark': True}
         lightning_config = config.pop("lightning", OmegaConf.create())
+        # print("Lightning config:" + str(lightning_config))
+
         # merge trainer cli with config
         trainer_config = lightning_config.get("trainer", OmegaConf.create())
         # default to ddp
         trainer_config["accelerator"] = "ddp"
+
         for k in nondefault_trainer_args(opt):
             trainer_config[k] = getattr(opt, k)
+        
+        print("nondefault_trainer_args(opt): " + str(nondefault_trainer_args(opt)))
+
+        exit(0)
+
         if not "gpus" in trainer_config:
             del trainer_config["accelerator"]
             cpu = True
