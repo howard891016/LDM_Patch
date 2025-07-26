@@ -549,9 +549,7 @@ if __name__ == "__main__":
         for k in nondefault_trainer_args(opt):
             trainer_config[k] = getattr(opt, k)
         
-        print("nondefault_trainer_args(opt): " + str(nondefault_trainer_args(opt)))
-
-        exit(0)
+        # (Howard add) trainer_config: {'benchmark': True, 'accelerator': 'ddp', 'gpus': 0}
 
         if not "gpus" in trainer_config:
             del trainer_config["accelerator"]
@@ -565,7 +563,8 @@ if __name__ == "__main__":
 
         # model
         model = instantiate_from_config(config.model)
-
+        # (Howard add) For training Patch-LDM: config.model.target = ldm.models.diffusion.ddpm.LatentDiffusion
+        
         # trainer and callbacks
         trainer_kwargs = dict()
 
