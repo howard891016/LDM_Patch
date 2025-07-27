@@ -1036,12 +1036,14 @@ class BeatGANsAutoencUNetModel(nn.Module):
         if num_head_channels == -1:
             assert num_heads != -1, 'Either num_heads or num_head_channels has to be set'
 
-        self.image_size = image_size
-        self.in_channels = in_channels
-        self.model_channels = model_channels
-        self.out_channels = out_channels
-        self.num_res_blocks = num_res_blocks
-        self.attention_resolutions = attention_resolutions
+        # (Howard add) No problems for above if statements
+
+        self.image_size = image_size # 64
+        self.in_channels = in_channels # 3
+        self.model_channels = model_channels # 224
+        self.out_channels = out_channels # 3
+        self.num_res_blocks = num_res_blocks # 2
+        self.attention_resolutions = attention_resolutions # (8, 4, 2) 
         self.dropout = dropout
         self.channel_mult = channel_mult
         self.conv_resample = conv_resample
