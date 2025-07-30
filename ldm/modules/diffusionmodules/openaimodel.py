@@ -2,11 +2,16 @@ from abc import abstractmethod
 from functools import partial
 import math
 from typing import Iterable
+from torch import Tensor
+import random
 
 import numpy as np
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
+
+from typing import NamedTuple, Tuple, Union
+from einops import rearrange, repeat
 
 from ldm.modules.diffusionmodules.util import (
     checkpoint,
@@ -998,6 +1003,7 @@ class BeatGANsAutoencUNetModel(nn.Module):
         out_channels,
         num_res_blocks,
         attention_resolutions,
+        semantic_path=None,  # path to the semantic segmentation model
         dropout=0,
         channel_mult=(1, 2, 4, 8),
         conv_resample=True,
@@ -1045,7 +1051,7 @@ class BeatGANsAutoencUNetModel(nn.Module):
         self.num_res_blocks = num_res_blocks # 2
         self.attention_resolutions = attention_resolutions # (8, 4, 2) 
         self.dropout = dropout
-        self.channel_mult = channel_mult
+        self.channel_mult = channel_mult # (1,2,3,4) for ffhq-ldm
         self.conv_resample = conv_resample
         self.num_classes = num_classes
         self.use_checkpoint = use_checkpoint
@@ -1056,11 +1062,29 @@ class BeatGANsAutoencUNetModel(nn.Module):
         self.predict_codebook_ids = n_embed is not None
 
         time_embed_dim = model_channels * 4
-        self.time_embed = nn.Sequential(
-            linear(model_channels, time_embed_dim),
-            nn.SiLU(),
-            linear(time_embed_dim, time_embed_dim),
+        
+
+        # ========== Original time_embed ==============
+        # self.time_embed = nn.Sequential(
+        #     linear(model_channels, time_embed_dim),
+        #     nn.SiLU(),
+        #     linear(time_embed_dim, time_embed_dim),
+        # )
+        # =============================================
+
+
+        # Howard add: time embedding for BeatGANs
+        enc_out_channels = 512
+        style_channels = enc_out_channels
+        self.time_embed = TimeStyleSeperateEmbed(
+            time_channels=model_channels,
+            time_out_channels=enc_out_channels,
+            style_channels=style_channels,
         )
+
+
+        # Howard add: (temp) encoder for semantic segmentation => need to be modified to BeatGANsUnetModel
+        self.encoder = Semantic(70000, initial_pt=semantic_path) if semantic_path is not None else None
 
         if self.num_classes is not None:
             self.label_emb = nn.Embedding(num_classes, time_embed_dim)
@@ -1259,7 +1283,18 @@ class BeatGANsAutoencUNetModel(nn.Module):
         self.middle_block.apply(convert_module_to_f32)
         self.output_blocks.apply(convert_module_to_f32)
 
-    def forward(self, x, timesteps=None, context=None, y=None,**kwargs):
+    # Howard add: encode function for BeatGANs
+    def encode(self, x):
+        cond = self.encoder.forward(x)
+        return cond
+
+    def forward(self, 
+                x, 
+                timesteps=None,
+                idx=None,  # Howard add: semantic index for BeatGANs 
+                context=None,   
+                y=None,
+                **kwargs):
         """
         Apply the model to an input batch.
         :param x: an [N x C x ...] Tensor of inputs.
@@ -1271,6 +1306,16 @@ class BeatGANsAutoencUNetModel(nn.Module):
         assert (y is not None) == (
             self.num_classes is not None
         ), "must specify y if and only if the model is class-conditional"
+        
+        # Howard add: encode semantic index
+        patch_size = 16 # Need to be modified to fit in other patch size
+        cond = self.encoder.encode(idx)
+        cond_tmp = cond.clone()
+        cond = cond.repeat_interleave(x.shape[0] // timesteps.shape[0], dim=0) 
+        H, W = x.shape[2:]
+        patch_num_x = H // patch_size
+        patch_num_y = W // patch_size
+
         hs = []
         t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
         emb = self.time_embed(t_emb)
@@ -1292,3 +1337,102 @@ class BeatGANsAutoencUNetModel(nn.Module):
             return self.id_predictor(h)
         else:
             return self.out(h)
+
+
+# Howard add: return type for time and style embedding
+class EmbedReturn(NamedTuple):
+    # style and time
+    emb: Tensor = None
+    # time only
+    time_emb: Tensor = None
+    # style only (but could depend on time)
+    style: Tensor = None
+
+class TimeStyleSeperateEmbed(nn.Module):
+    # embed only style
+    def __init__(self, time_channels, time_out_channels, style_channels):
+        super().__init__()
+        self.time_embed = nn.Sequential(
+            linear(time_channels, time_out_channels // 2),
+            nn.SiLU(),
+            linear(time_out_channels // 2, time_out_channels // 2),
+        )
+
+        self.pos_embed = nn.Sequential(
+            linear(128, time_out_channels // 2),
+            nn.SiLU(),
+            linear(time_out_channels // 2, time_out_channels // 2),
+        )
+        
+        # self.style = nn.Sequential(
+        #     linear(style_channels, time_out_channels),
+        #     nn.SiLU(),
+        #     linear(time_out_channels, time_out_channels),
+        # )
+
+        if style_channels == time_out_channels:
+            self.style = nn.Identity()
+        else:
+            self.style = nn.Sequential(
+            linear(style_channels, time_out_channels),
+            nn.SiLU(),
+            linear(time_out_channels, time_out_channels),
+        )
+
+    def forward(self, time_emb=None, cond=None, pos_emb=None, **kwargs):
+        if time_emb is None:
+            # happens with autoenc training mode
+            time_emb = None
+        else:
+            time_emb = self.time_embed(time_emb)
+
+        pos_emb = self.pos_embed(pos_emb)
+
+        if cond is None:
+            style = None
+        else:
+            style = self.style(cond)
+        return EmbedReturn(emb=style, time_emb=th.cat([time_emb, pos_emb], dim=1), style=style)
+    
+# Howard add: semantic embedding for BeatGANs
+class Semantic(nn.Module):
+    '''
+    semantic embedding 
+    '''
+    def __init__(self, sample_num, device = 'cuda', conf = None, initial_clip = False, initial_pt = None):
+        super().__init__()
+        if initial_pt is None and not initial_clip:
+            self.semantic_enc = None
+        else:
+            self.semantic_enc = nn.Embedding(sample_num, 512)
+        if initial_clip:
+            assert conf is not None
+            data = conf.make_dataset()
+            import clip
+            model, preprocess = clip.load("ViT-B/16", device = 'cpu')
+            model = model.to(device)
+            data.transform = preprocess
+            loader = conf.make_loader(
+                data,
+                shuffle = False,
+                drop_last = False,
+                batch_size = 128,
+                parallel = True,
+            )
+            from tqdm import tqdm
+            for batch in tqdm(loader, total = len(loader), desc = 'Initialization'):
+                with th.no_grad():
+                    img = batch['img'].to(device)
+                    idx = batch['index']
+                    image_feature = model.encode_image(img)
+                    self.semantic_enc.weight[idx] = image_feature.detach().cpu()
+        if initial_pt is not None:
+            checkpoint = th.load(initial_pt, map_location='cpu')
+            weight = checkpoint['model_state_dict']['semantic_enc.weight']
+            self.semantic_enc = nn.Embedding.from_pretrained(weight)
+            self.semantic_enc.weight.requires_grad_(True)
+            del weight
+            del checkpoint
+        
+    def forward(self, idx):
+        return self.semantic_enc(idx)
