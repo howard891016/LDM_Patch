@@ -1291,7 +1291,9 @@ class BeatGANsAutoencUNetModel(nn.Module):
     def forward(self, 
                 x, 
                 timesteps=None,
-                idx=None,  # Howard add: semantic index for BeatGANs 
+                pos=None,  # Howard add: position embedding for BeatGANs
+                idx=None,  # Howard add: semantic idx for BeatGANs
+                index=None,  # Howard add: patch index for BeatGANs 
                 context=None,   
                 y=None,
                 **kwargs):
@@ -1307,32 +1309,170 @@ class BeatGANsAutoencUNetModel(nn.Module):
             self.num_classes is not None
         ), "must specify y if and only if the model is class-conditional"
         
+        # Howard add: for ease
+        t = timesteps
+
         # Howard add: encode semantic index
         patch_size = 16 # Need to be modified to fit in other patch size
         cond = self.encoder.encode(idx)
         cond_tmp = cond.clone()
-        cond = cond.repeat_interleave(x.shape[0] // timesteps.shape[0], dim=0) 
+        cond = cond.repeat_interleave(x.shape[0] // t.shape[0], dim=0) 
         H, W = x.shape[2:]
         patch_num_x = H // patch_size
         patch_num_y = W // patch_size
 
+        # Howard add: processing time_emb, pos_emb
+        t_cur = repeat(t, 'h -> (h repeat)', repeat=int(x.shape[0]/t.shape[0]))
+        _t_emb = timestep_embedding(t_cur, self.model_channels)
+
+        pos_x = timestep_embedding(pos[:, 0], 64)
+        pos_y = timestep_embedding(pos[:, 1], 64)
+        pos_emb = th.cat([pos_x, pos_y], dim=1)
+
+        # Howard add: use for resnet_two_cond
+        res = self.time_embed.forward(
+            time_emb=_t_emb,
+            cond=cond,
+            pos_emb=pos_emb,
+        )
+        emb = res.time_emb
+        cond_emb = res.emb
+
+        # Howard add:
+        # where in the model to supply time conditions
+        enc_time_emb = emb
+        mid_time_emb = emb
+        dec_time_emb = emb
+        # where in the model to supply style conditions
+        enc_cond_emb = cond_emb
+        mid_cond_emb = cond_emb
+        dec_cond_emb = cond_emb
+
+        # Howard add: Additional pos embedding
+        pos_new = th.stack([index[0]+0.5, index[1]+0.5], dim = -1).unsqueeze(0).repeat(t.shape[0], 1)
+        pos_x_new = timestep_embedding(pos_new[:, 0], 64)
+        pos_y_new = timestep_embedding(pos_new[:, 1], 64)
+        pos_emb_new = th.cat([pos_x_new, pos_y_new], dim=1).to(pos_emb.device)
+
+        # Howard add: Change of time embedding
+        t_cur_new = repeat(t, 'h -> (h repeat)', repeat=int(x.shape[0]/t.shape[0]))
+        _t_emb_new = timestep_embedding(t_cur_new, self.model_channels)
+        # Howard add: Change of cond embedding
+        cond_new = cond_tmp.repeat_interleave(x.shape[0] // t.shape[0], dim=0)
+        res_new = self.time_embed.forward(
+            time_emb=_t_emb_new,
+            cond=cond_new,
+            pos_emb=pos_emb_new,
+        )
+
         hs = []
-        t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
-        emb = self.time_embed(t_emb)
+        # Howard add: hs_train for second return
+        hs_train = []
+
+        # ========== Original time embedding ==============
+        # t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
+        # emb = self.time_embed(t_emb)
+        # =================================================
 
         if self.num_classes is not None:
             assert y.shape == (x.shape[0],)
             emb = emb + self.label_emb(y)
 
         h = x.type(self.dtype)
-        for module in self.input_blocks:
-            h = module(h, emb, context)
-            hs.append(h)
+
+        # ========== Original input blocks ==============
+        # for module in self.input_blocks:
+        #     h = module(h, emb, context)
+        #     hs.append(h)
+        # =================================================
+
+        # Howard add: input blocks with time and style embedding
+        k = 0
+        for i in range(len(self.input_num_blocks)):
+            for j in range(self.input_num_blocks[i]):
+                h = self.input_blocks[k](h,
+                                        emb=enc_time_emb,
+                                        cond=enc_cond_emb)
+
+                hs[i].append(h)
+                hs_train[i].append(h.clone())
+                k += 1
+            # print(h.size())
+        assert k == len(self.input_blocks)
+
         h = self.middle_block(h, emb, context)
-        for module in self.output_blocks:
-            h = th.cat([h, hs.pop()], dim=1)
-            h = module(h, emb, context)
-        h = h.type(x.dtype)
+        h_train = h.clone()
+
+        # ========== Original output blocks ==============
+        # for module in self.output_blocks:
+        #     h = th.cat([h, hs.pop()], dim=1)
+        #     h = module(h, emb, context)
+        # h = h.type(x.dtype)
+        # =================================================
+
+        # Howard add: output blocks with time and style embedding
+        prob = 1
+        p1 = 2
+        p2 = 2
+        
+        k = 0
+        for i in range(len(self.output_blocks)):
+            batch_size, c, height, width = h.shape
+            if i == 0:
+                half_p = int(height // 2)
+                h_ori = rearrange(h, '(b p1 p2) c h w -> b c (h p1) (w p2)', p1=p1, p2=p2)
+                h_ori_crop = h_ori[:, :, half_p:-half_p, half_p:-half_p]
+                h_shift = rearrange(h_ori_crop, 'b c (p1 h) (p2 w) -> (b p1 p2) c h w', h = height, w = width)
+                h = h_shift
+            
+            for j in range(self.output_num_blocks[i]):
+                try:
+                    lateral = hs[-i - 1].pop()
+                    '''NOTE: change the size of lateral to add shorcut'''
+                    lateral_batch_size = lateral.size(0)
+                    if lateral_batch_size != h.size(0):
+                        half_p = int(height//2)
+                        lateral_ori = rearrange(lateral, '(b p1 p2) c h w -> b c (p1 h) (p2 w)', p1 = p1, p2 = p2)
+                        lateral_ori_crop = lateral_ori[:, :, half_p:-half_p, half_p:-half_p]
+                        lateral_shift = rearrange(lateral_ori_crop, 'b c (p1 h) (p2 w) -> (b p1 p2) c h w', h = height, w = width)
+                        lateral  = lateral_shift
+                except IndexError:
+                    lateral = None
+
+                if dec_time_emb.size(0) != h.size(0): # for change of dimension
+                        # change of position embedding
+                        assert h.size(0) == res_new.time_emb.size(0) == lateral.size(0) == res_new.emb.size(0)
+                        h = self.output_blocks[k](h,
+                                            emb=res_new.time_emb,
+                                            cond=res_new.emb, #res_new.emb,
+                                            lateral=lateral)
+                else:
+                    assert h.size(0) == dec_time_emb.size(0) == lateral.size(0) == dec_cond_emb.size(0)
+                    h = self.output_blocks[k](h,
+                                        emb=dec_time_emb,
+                                        cond=dec_cond_emb, #dec_cond_emb,
+                                        lateral=lateral)
+                k += 1
+            pred1 = self.out(h)
+
+            # Howard add: Second return
+            k = 0
+            for i in range(len(self.output_num_blocks)):
+                for j in range(self.output_num_blocks[i]):
+                    try:
+                        lateral = hs_train[-i - 1].pop()
+                    except IndexError:
+                        lateral = None
+                    h_train = self.output_blocks[k](h_train,
+                                            emb=dec_time_emb,
+                                            cond=dec_cond_emb,
+                                            lateral=lateral)
+                    k += 1
+
+            pred2 = self.out(h_train)
+        
+        return AutoencReturn(pred=pred1, pred2=pred2, cond=cond)
+
         if self.predict_codebook_ids:
             return self.id_predictor(h)
         else:
@@ -1340,6 +1480,12 @@ class BeatGANsAutoencUNetModel(nn.Module):
 
 
 # Howard add: return type for time and style embedding
+class AutoencReturn(NamedTuple):
+    pred: Tensor
+    pred2: Tensor
+    cond: Tensor = None
+
+
 class EmbedReturn(NamedTuple):
     # style and time
     emb: Tensor = None
