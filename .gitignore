@@ -7,3 +7,5 @@ models/ldm/inpainting_big/archive/
 *log
 *.pt
 semantic_pt_file
+*.png
+*.jpg

@@ -26,8 +26,9 @@ def custom_to_np(x):
 def custom_to_pil(x):
     x = x.detach().cpu()
     print(f"Image max: {x.max()}, min: {x.min()}")
-    x = torch.clamp(x, -1., 1.)
-    x = (x + 1.) / 2.
+    # x = (x + 1.) / 2.
+    # x = torch.clamp(x, -1., 1.)
+    x = torch.clamp(x, 0., 1.)
     x = x.permute(1, 2, 0).numpy()
     # x = x.numpy()
     print(f"Image shape: {x.shape}")
@@ -59,7 +60,7 @@ if __name__ == "__main__":
         transforms.Resize((256, 256)),
         transforms.ToTensor()
     ])
-    img = transform(Image.open("/home/howard/LDM_Patch/00000.png").convert("RGB"))
+    img = transform(Image.open("/home/howard/LDM_Patch/00001.png").convert("RGB"))
     # img = Image.open("/home/howard/LDM_Patch/data/inpainting_examples/bench2.png").convert("RGB")
     img = img.unsqueeze(0)  # Add batch dimension
     # print(f"Image shape: {img.shape}")
