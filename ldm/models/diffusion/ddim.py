@@ -102,7 +102,7 @@ class DDIMSampler(object):
                                                     temperature=temperature,
                                                     score_corrector=score_corrector,
                                                     corrector_kwargs=corrector_kwargs,
-                                                    x_T=x_T,
+                                                    x_T=x_T, # (Howard add) x_T is the initial noise tensor => x_T=None for FFHQ256
                                                     log_every_t=log_every_t,
                                                     unconditional_guidance_scale=unconditional_guidance_scale,
                                                     unconditional_conditioning=unconditional_conditioning,
