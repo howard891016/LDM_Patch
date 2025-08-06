@@ -89,13 +89,20 @@ def make_convolutional_sample(model, batch_size, vanilla=False, custom_steps=Non
     with model.ema_scope("Plotting"):
         t0 = time.time()
         if vanilla:
+            print(f"Using vanilla DDPM sampling with {model.num_timesteps} sampling steps.")
             sample, progrow = convsample(model, shape,
                                          make_prog_row=True)
         else:
+            print(f"Using DDIM sampling with {custom_steps} sampling steps and eta={eta}.")
             sample, intermediates = convsample_ddim(model,  steps=custom_steps, shape=shape,
                                                     eta=eta)
 
         t1 = time.time()
+    
+    save_sample = sample.cpu().detach().numpy()
+    save_sample = save_sample.squeeze(0)  # Remove batch dimension
+    save_sample = custom_to_pil(torch.tensor(save_sample))
+    save_sample.save(f"./Not_decode_yet/output_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg")
 
     x_sample = model.decode_first_stage(sample)
 
