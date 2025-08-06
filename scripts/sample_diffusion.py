@@ -153,6 +153,7 @@ def save_logs(logs, path, n_saved=0, key="sample", np_path=None):
             batch = logs[key]
             if np_path is None:
                 for x in batch:
+                    print("image max: {}, min: {}".format(x.max(), x.min()))
                     img = custom_to_pil(x)
                     imgpath = os.path.join(path, f"{key}_{n_saved:06}.png")
                     img.save(imgpath)
