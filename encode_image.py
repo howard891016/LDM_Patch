@@ -38,6 +38,9 @@ def custom_to_pil(x):
         x = x.convert("RGB")
     return x
 
+# Command to run the script:
+# python3 encode_image.py --config configs/latent-diffusion/ffhq-ldm-vq-4.yaml
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=str, required=True, help="Path to the model config file")
@@ -60,7 +63,7 @@ if __name__ == "__main__":
         transforms.Resize((256, 256)),
         transforms.ToTensor()
     ])
-    img = transform(Image.open("/home/howard/LDM_Patch/00001.png").convert("RGB"))
+    img = transform(Image.open("/home/howard/LDM_Patch/test_sample_diffusion/ffhq256/samples/00634478/2025-08-06-22-54-59/img/sample_-00001.png").convert("RGB"))
     # img = Image.open("/home/howard/LDM_Patch/data/inpainting_examples/bench2.png").convert("RGB")
     img = img.unsqueeze(0)  # Add batch dimension
     # print(f"Image shape: {img.shape}")
@@ -86,4 +89,4 @@ if __name__ == "__main__":
     decode_img = decode_img.cpu().detach().numpy()
     decode_img = decode_img.squeeze(0)  # Remove batch dimension
     decode_img = custom_to_pil(torch.tensor(decode_img))
-    decode_img.save("output_decode.jpg")
+    decode_img.save("output_decode_ffhq.jpg")
