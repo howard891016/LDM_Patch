@@ -705,6 +705,7 @@ class LatentDiffusion(DDPM):
     @torch.no_grad()
     def decode_first_stage(self, z, predict_cids=False, force_not_quantize=False):
         if predict_cids:
+            print("ffhq decode_first_stage: predicting cids")
             if z.dim() == 4:
                 z = torch.argmax(z.exp(), dim=1).long()
             z = self.first_stage_model.quantize.get_codebook_entry(z, shape=None)
@@ -758,6 +759,7 @@ class LatentDiffusion(DDPM):
 
         else:
             if isinstance(self.first_stage_model, VQModelInterface):
+                print(f"ffhq first_stage_model: VQModelInterface, force_not_quantize={predict_cids or force_not_quantize}")
                 return self.first_stage_model.decode(z, force_not_quantize=predict_cids or force_not_quantize)
             else:
                 return self.first_stage_model.decode(z)
@@ -988,7 +990,7 @@ class LatentDiffusion(DDPM):
             x_recon = fold(o) / normalization
 
         else:
-            print("FFHQ256 model no attr: split_input_params.")
+            # print("FHQ256 model no attr: split_input_params.")
             
 
             x_recon = self.model(x_noisy, t, **cond)
