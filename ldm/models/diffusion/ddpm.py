@@ -667,6 +667,7 @@ class LatentDiffusion(DDPM):
                 if cond_key in ['caption', 'coordinates_bbox']:
                     xc = batch[cond_key]
                 elif cond_key == 'class_label':
+                    print("Using class label conditioning")
                     xc = batch
                 else:
                     xc = super().get_input(batch, cond_key).to(self.device)
@@ -677,6 +678,7 @@ class LatentDiffusion(DDPM):
                     # import pudb; pudb.set_trace()
                     c = self.get_learned_conditioning(xc)
                 else:
+                    print("Using learned conditioning")
                     c = self.get_learned_conditioning(xc.to(self.device))
             else:
                 c = xc
@@ -704,6 +706,7 @@ class LatentDiffusion(DDPM):
 
     @torch.no_grad()
     def decode_first_stage(self, z, predict_cids=False, force_not_quantize=False):
+        print(f"In ffhq256 decode_first_stage: predict_cids = {predict_cids}")
         if predict_cids:
             print("ffhq decode_first_stage: predicting cids")
             if z.dim() == 4:
@@ -711,7 +714,9 @@ class LatentDiffusion(DDPM):
             z = self.first_stage_model.quantize.get_codebook_entry(z, shape=None)
             z = rearrange(z, 'b h w c -> b c h w').contiguous()
 
+        #  (Howard add) self.scale_factor = 1.0 (for ffhq256)
         z = 1. / self.scale_factor * z
+        print(f"ffhq decode_first_stage: z.shape = {z.shape}, scale_factor = {self.scale_factor}")
 
         if hasattr(self, "split_input_params"):
             if self.split_input_params["patch_distributed_vq"]:
