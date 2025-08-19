@@ -103,8 +103,9 @@ def make_convolutional_sample(model, batch_size, vanilla=False, custom_steps=Non
     save_sample = save_sample.squeeze(0)  # Remove batch dimension
     save_sample = custom_to_pil(torch.tensor(save_sample))
     save_sample.save(f"./Not_decode_yet/output_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg")
-
+    print(f"sample max: {sample.max()}, min: {sample.min()}")
     x_sample = model.decode_first_stage(sample)
+    print(f"x_sample max: {x_sample.max()}, min: {x_sample.min()}")
 
     log["sample"] = x_sample
     log["time"] = t1 - t0
