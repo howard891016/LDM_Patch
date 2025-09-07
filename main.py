@@ -564,7 +564,8 @@ if __name__ == "__main__":
         # model
         model = instantiate_from_config(config.model)
         # (Howard add) For training Patch-LDM: config.model.target = ldm.models.diffusion.ddpm.LatentDiffusion
-        
+        with open("Model_architecture.txt", "w") as f:
+            f.write(str(model))
         # trainer and callbacks
         trainer_kwargs = dict()
 
@@ -723,6 +724,9 @@ if __name__ == "__main__":
             print("++++ NOT USING LR SCALING ++++")
             print(f"Setting learning rate to {model.learning_rate:.2e}")
 
+        print("++++++ scale_factor ++++++")
+        print(f"self.scale_factor = {model.scale_factor}")
+        print(f"self.scale_by_std = {model.scale_by_std}")
 
         # allow checkpointing via USR1
         def melk(*args, **kwargs):

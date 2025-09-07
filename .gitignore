@@ -9,3 +9,6 @@ models/ldm/inpainting_big/archive/
 semantic_pt_file
 *.png
 *.jpg
+*.txt
+logs/
+.gitignore

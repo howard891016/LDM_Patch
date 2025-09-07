@@ -137,71 +137,72 @@ if __name__ == "__main__":
 
     transform = transforms.Compose([
         transforms.Resize((256, 256)),
-        transforms.ToTensor()
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
     ])
 
-    # image_folder = "./dataset/ffhq256"  # 預設的 FFHQ 資料夾路徑
+    image_folder = "./dataset/ffhq256"  # 預設的 FFHQ 資料夾路徑
 
-    # ffhq_dataset = dataset = ImageFolderDataset(folder_path=image_folder, transform=transform)
+    ffhq_dataset = dataset = ImageFolderDataset(folder_path=image_folder, transform=transform)
     
-    # data_loader = DataLoader(
-    #     ffhq_dataset, batch_size=args.batch_size, shuffle=False,
-    #     num_workers=args.num_workers, pin_memory=True
-    # )
+    data_loader = DataLoader(
+        ffhq_dataset, batch_size=args.batch_size, shuffle=False,
+        num_workers=args.num_workers, pin_memory=True
+    )
 
-    # output_dir = args.output_dir if hasattr(args, 'output_dir') else "./dataset/ffhq256_encode"
+    output_dir = args.output_dir if hasattr(args, 'output_dir') else "./dataset/ffhq256_encode_normalize"
 
-    # print(f"Starting encoding. Latents will be saved to '{output_dir}'")
-    # os.makedirs(output_dir, exist_ok=True)
+    print(f"Starting encoding. Latents will be saved to '{output_dir}'")
+    os.makedirs(output_dir, exist_ok=True)
 
-    # for i, batch in enumerate(tqdm(data_loader, desc="Encoding images from folder")):
-    #     # 因為我們的 Dataset __getitem__ 只返回圖片，所以 batch 就是圖片 tensor
-    #     images = batch.to("cuda")
+    for i, batch in enumerate(tqdm(data_loader, desc="Encoding images from folder")):
+        # 因為我們的 Dataset __getitem__ 只返回圖片，所以 batch 就是圖片 tensor
+        images = batch.to("cuda")
 
-    #     with torch.no_grad():
-    #         encoded_latents = model.encode(images)
+        with torch.no_grad():
+            encoded_latents = model.encode_first_stage(images)
 
-    #     # 遍歷批次中的每一個潛在向量並儲存
-    #     for j in range(encoded_latents.shape[0]):
-    #         single_latent = encoded_latents[j]
+        # 遍歷批次中的每一個潛在向量並儲存
+        for j in range(encoded_latents.shape[0]):
+            single_latent = encoded_latents[j]
             
-    #         # 計算全域的圖片索引
-    #         image_index = i * args.batch_size + j
+            # 計算全域的圖片索引
+            image_index = i * args.batch_size + j
             
-    #         # 將檔名格式化為 00000.pt, 00001.pt, ...
-    #         filename = f"{image_index:05d}.pt"
-    #         output_path = os.path.join(args.output_dir, filename)
+            # 將檔名格式化為 00000.pt, 00001.pt, ...
+            filename = f"{image_index:05d}.pt"
+            output_path = os.path.join(args.output_dir, filename)
             
-    #         # 無損儲存
-    #         torch.save(single_latent.cpu(), output_path)
+            # 無損儲存
+            torch.save(single_latent.cpu(), output_path)
 
-    # print(f"\nFinished encoding {len(ffhq_dataset)} images.")
-    # print(f"Latent tensors are saved in: {output_dir}")
+    print(f"\nFinished encoding {len(ffhq_dataset)} images.")
+    print(f"Latent tensors are saved in: {output_dir}")
 
-    img = transform(Image.open("./00000.png").convert("RGB"))  
-    # img = Image.open("/home/howard/LDM_Patch/data/inpainting_examples/bench2.png").convert("RGB")
-    img = img.unsqueeze(0)  # Add batch dimension
-    print(f"Image shape: {img.shape}")
-    print(f"Image dtype: {img.dtype}")
-    print(f"Image min: {img.min()}, max: {img.max()}")
-    print(f"Image size: {img.size()}")
-    if len(img.shape) == 3:
-        img = img[..., None]
-    # img = rearrange(img, 'b h w c -> b c h w')
-    img = img.to(memory_format=torch.contiguous_format).float()
-    img = img.to("cuda")
+    # img = transform(Image.open("./00000.png").convert("RGB"))  
+    # # img = Image.open("/home/howard/LDM_Patch/data/inpainting_examples/bench2.png").convert("RGB")
+    # img = img.unsqueeze(0)  # Add batch dimension
+    # print(f"Image shape: {img.shape}")
+    # print(f"Image dtype: {img.dtype}")
+    # print(f"Image min: {img.min()}, max: {img.max()}")
+    # print(f"Image size: {img.size()}")
+    # if len(img.shape) == 3:
+    #     img = img[..., None]
+    # # img = rearrange(img, 'b h w c -> b c h w')
+    # img = img.to(memory_format=torch.contiguous_format).float()
+    # img = img.to("cuda")
 
-    encode_img = model.encode_first_stage(img)
-    if isinstance(encode_img, DiagonalGaussianDistribution):
-        print("Encoded image is a DiagonalGaussianDistribution, extracting mean.")
-    print(f"Encoded image shape: {encode_img.shape}")
+    # encode_img = model.encode_first_stage(img)
+    # if isinstance(encode_img, DiagonalGaussianDistribution):
+    #     print("Encoded image is a DiagonalGaussianDistribution, extracting mean.")
+    # print(f"Encoded image shape: {encode_img.shape}")
 
-    decode_img = model.decode_first_stage(encode_img)
+    # decode_img = model.decode_first_stage(encode_img)
 
-    encode_img = encode_img.cpu().detach().numpy()
-    encode_img = encode_img.squeeze(0)  # Remove batch dimension
-    print("encode image max: {}, min: {}".format(torch.tensor(encode_img).max(), torch.tensor(encode_img).min()))
-    print("decode image max: {}, min: {}".format(torch.tensor(decode_img).max(), torch.tensor(decode_img).min()))
+    # encode_img = encode_img.cpu().detach().numpy()
+    # encode_img = encode_img.squeeze(0)  # Remove batch dimension
+    # print("encode image max: {}, min: {}".format(torch.tensor(encode_img).max(), torch.tensor(encode_img).min()))
+    # print("decode image max: {}, min: {}".format(torch.tensor(decode_img).max(), torch.tensor(decode_img).min()))
     # encode_img = custom_to_pil(torch.tensor(encode_img))
     # encode_img = Image.fromarray(encode_img.astype(np.uint8))
     # encode_img.save("output_encode_ffhq_RGB.png")
@@ -222,7 +223,7 @@ if __name__ == "__main__":
     # retry_decode = custom_to_pil(torch.tensor(retry_decode))
     # retry_decode.save("output_retry_decode_ffhq_RGB.png")
 
-    decode_img = decode_img.cpu().detach().numpy()
-    decode_img = decode_img.squeeze(0)  # Remove batch dimension
-    decode_img = custom_to_pil(torch.tensor(decode_img))
-    decode_img.save("test_decode_range.png")
+    # decode_img = decode_img.cpu().detach().numpy()
+    # decode_img = decode_img.squeeze(0)  # Remove batch dimension
+    # decode_img = custom_to_pil(torch.tensor(decode_img))
+    # decode_img.save("test_decode_range.png")

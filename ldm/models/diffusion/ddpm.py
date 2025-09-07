@@ -489,6 +489,9 @@ class LatentDiffusion(DDPM):
             self.register_buffer('scale_factor', 1. / z.flatten().std())
             print(f"setting self.scale_factor to {self.scale_factor}")
             print("### USING STD-RESCALING ###")
+        else:
+            print("### NOT USING STD-RESCALING ###")
+            print(f"self.scale_factor = {self.scale_factor}")
 
     def register_schedule(self,
                           given_betas=None, beta_schedule="linear", timesteps=1000,

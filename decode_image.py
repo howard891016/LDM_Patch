@@ -132,26 +132,30 @@ if __name__ == "__main__":
         transforms.ToTensor()
     ])
 
-    image_folder = "./LDM_PatchDM_latent/LDM_encode_no_clip_denoise"  # 預設的 FFHQ 資料夾路徑
+    # image_folder = "./LDM_PatchDM_latent/LDM_encode_no_clip_denoise"  # 預設的 FFHQ 資料夾路徑
+    image_folder = "./LDM_PatchDM_latent/LDM_encode_16_normalize"  # 預設的 FFHQ 資料夾路徑
 
-    
+      # 確保圖片按照名稱排序
 
-    output_dir = "./LDM_PatchDM_latent_decode/LDM_PatchDM_latent_decode_no_clip_denoise"  # 預設的輸出資料夾路徑
+    output_dir = "./LDM_PatchDM_latent_decode/tesLDM_encode_16_normalize"  # 預設的輸出資料夾路徑
+    # output_dir = "./LDM_PatchDM_latent_decode/LDM_PatchDM_latent_decode_no_clip_denoise"  # 預設的輸出資料夾路徑
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
     idx = 1 
-    for latent_img in glob.glob(os.path.join(image_folder, "*.pt")):
+    for latent_img in sorted(glob.glob(os.path.join(image_folder, "*.pt"))):
         
         print(f"Processing latent image: {latent_img}")
         latent_img = torch.load(latent_img).cuda()
         print(f"latent_img max: {latent_img.max()}, min: {latent_img.min()}")
         img = model.decode_first_stage(latent_img)
-        img =img.squeeze(0)  # Remove batch dimension
-        img = custom_to_pil(img)
+        print(f"img max: {img.max()}, min: {img.min()}")
+        img = img.squeeze(0)  # Remove batch dimension
+        img = custom_to_pil(torch.tensor(img))
         img_name = "decoded_image_{}.png".format(idx)
         idx += 1
+        print(f"Saving decoded image to: {os.path.join(output_dir, img_name)}")
         img.save(os.path.join(output_dir, img_name))
         # img = model.decode_first_stage(latent_img)
         # img = img.squeeze(0)
